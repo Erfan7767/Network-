@@ -8,9 +8,7 @@ Codes: L - local, C - connected, S - static, R - RIP, M - mobile, B - BGP
        a - application route
        + - replicated route, % - next hop override
 
-Gateway of last resort is 10.99.0.254 to network 0.0.0.0
 
-S*    0.0.0.0/0 [1/0] via 10.99.0.254
       10.0.0.0/8 is variably subnetted, 8 subnets, 2 masks
 C        10.0.0.0/24 is directly connected, Vlan10
 L        10.0.0.1/32 is directly connected, Vlan10

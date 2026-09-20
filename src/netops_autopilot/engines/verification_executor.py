@@ -141,6 +141,15 @@ _POOL_DNS = re.compile(r"^\s+dns-server (?P<servers>.+?)\s*$", re.MULTILINE)
 
 #: Static default route in ``show ip route`` output.
 _DEFAULT_ROUTE = re.compile(r"^S\*\s+0\.0\.0\.0/0", re.MULTILINE)
+_DEFAULT_NEXTHOP = re.compile(
+    r"^S\*\s+0\.0\.0\.0/0.*?\bvia\s+(?P<nh>\d+\.\d+\.\d+\.\d+)",
+    re.MULTILINE)
+_CONNECTED_ROUTE = re.compile(
+    # `C        10.0.0.0/24 is directly connected, Vlan10` — the route code
+    # column is optional, because a synthesized line may omit it.
+    r"^(?:[A-Za-z][A-Za-z*%+0-9]*)?\s*(?P<net>\d+\.\d+\.\d+\.\d+/\d+)"
+    r"\s+is directly connected",
+    re.MULTILINE)
 _LAST_RESORT = re.compile(r"Gateway of last resort is (?P<gw>\S+)")
 
 
@@ -574,8 +583,34 @@ class VerificationExecutor:
         has_default = bool(_DEFAULT_ROUTE.search(ev.text))
         last_resort = _LAST_RESORT.search(ev.text)
         if has_default:
-            return (TestResult(test_id=spec.test_id, outcome=Outcome.PASS,
-                               evidence_id=ev.raw_id), "")
+            # A default route is only egress when its next hop is reachable.
+            # `S* 0.0.0.0/0 via X` sends every packet to X at L2, so X must sit
+            # in a network this router has directly connected; otherwise the
+            # route is installed and unusable. Grading the line's mere presence
+            # let a run with no configured default route pass on a route table
+            # that already carried one from somewhere else — a false success
+            # that reads as "internet verified".
+            nh = _DEFAULT_NEXTHOP.search(ev.text)
+            if nh is None:
+                # No `via`: an on-link default out of an interface, which the
+                # routing table itself vouches for.
+                return (TestResult(test_id=spec.test_id, outcome=Outcome.PASS,
+                                   evidence_id=ev.raw_id), "")
+            hop = ipaddress.ip_address(nh.group("nh"))
+            connected = [ipaddress.ip_network(m.group("net"), strict=False)
+                         for m in _CONNECTED_ROUTE.finditer(ev.text)]
+            if any(hop in net for net in connected):
+                return (TestResult(test_id=spec.test_id, outcome=Outcome.PASS,
+                                   evidence_id=ev.raw_id), "")
+            detail = (f"default route exists but its next hop {hop} is in no "
+                      f"directly connected network on {gw} "
+                      f"(connected: {[str(n) for n in connected] or 'none'}), so "
+                      f"it forwards nothing — the WAN has no usable egress")
+            self._note(FindingKind.NO_DEFAULT_ROUTE, device=ev.device_ref,
+                       zone="wan", detail=f"{gw}: {detail}",
+                       evidence_id=ev.raw_id)
+            return (TestResult(test_id=spec.test_id, outcome=Outcome.FAIL,
+                               evidence_id=ev.raw_id), detail)
         detail = ("no `S* 0.0.0.0/0` in `show ip route`"
                   + (f"; gateway of last resort is {last_resort.group('gw')}"
                      if last_resort else "; no gateway of last resort set"))

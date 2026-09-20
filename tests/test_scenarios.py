@@ -81,7 +81,9 @@ def test_scenario_io_answers_each_question_by_name():
     # orchestrator then fed to the WAN question and every answer after it
     # landed one slot late.
     assert router == "seed-01"
-    assert wan == "ISP fiber, static IP /30"
+    # A static handoff must carry the provider's block and next hop: they are
+    # facts only the provider knows, and the design refuses to invent them.
+    assert wan == "ISP fiber, static 203.0.113.0/30 gw 203.0.113.1"
     assert avail == "HIGH"
     assert growth == "+40% in 24 months"
 
