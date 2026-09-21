@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NetOps Autopilot · Run demo</title>
+<style>
+:root { --bg:#0f1419; --card:#1a202c; --text:#e2e8f0; --dim:#a0aec0; --accent:#4a90e2; --green:#48bb78; --red:#f56565; --yellow:#ed8936; }
+* { box-sizing:border-box; }
+body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--text); line-height:1.5; }
+.container { max-width:1200px; margin:0 auto; padding:24px; }
+h1 { color:var(--accent); margin:0 0 8px; font-size:28px; }
+h2 { color:var(--accent); margin:32px 0 12px; font-size:20px; border-bottom:1px solid #2d3748; padding-bottom:8px; }
+h3 { color:var(--text); font-size:16px; margin:16px 0 8px; }
+.card { background:var(--card); border-radius:8px; padding:16px; margin-bottom:16px; box-shadow:0 2px 4px rgba(0,0,0,0.3); }
+.kv { display:grid; grid-template-columns:200px 1fr; gap:8px; font-size:14px; }
+.kv .k { color:var(--dim); }
+.badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600; }
+.badge.ok { background:var(--green); color:#000; }
+.badge.blocked { background:var(--red); color:#fff; }
+.badge.human { background:var(--yellow); color:#000; }
+.badge.typed { background:#9f7aea; color:#fff; }
+.badge.running { background:#4299e1; color:#fff; }
+pre { background:#0d1117; border:1px solid #2d3748; border-radius:4px; padding:12px; overflow-x:auto; font-size:12px; color:#c9d1d9; }
+.topology-svg { background:var(--card); border-radius:8px; padding:16px; }
+details { background:#0d1117; border:1px solid #2d3748; border-radius:4px; padding:8px 12px; margin:8px 0; }
+summary { cursor:pointer; color:var(--accent); font-weight:600; }
+.alert { background:#742a2a; border-left:4px solid var(--red); padding:12px; border-radius:4px; margin:12px 0; }
+.alert.ok { background:#22543d; border-left-color:var(--green); }
+.alert.warn { background:#744210; border-left-color:var(--yellow); }
+table { width:100%; border-collapse:collapse; margin:8px 0; font-size:14px; }
+th, td { text-align:left; padding:8px; border-bottom:1px solid #2d3748; }
+th { color:var(--dim); font-weight:600; }
+.footer { color:var(--dim); font-size:12px; text-align:center; margin-top:32px; padding-top:16px; border-top:1px solid #2d3748; }
+.gaps li { color:var(--yellow); }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>NetOps Autopilot · Run Report</h1>
+  <div class="card">
+    <div class="kv">
+      <div class="k">Run ID</div><div>demo</div>
+      <div class="k">Generated</div><div>2026-09-18 23:22:01 UTC</div>
+      <div class="k">Final</div><div><span class="badge running">COMPLETE-STAGED</span></div>
+      <div class="k">Seed family</div><div>cisco/ios-xe</div>
+      <div class="k">Day-0 state</div><div>UNKNOWN</div>
+      <div class="k">Ledger events</div><div>0</div>
+      <div class="k">Chain integrity</div><div>✓ OK</div>
+    </div>
+  </div>
+  <div class="alert ok"><strong>Final outcome:</strong> <span class="badge running">COMPLETE-STAGED</span> &nbsp; </div>
+  <h2>Phase timeline</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Phase</th><th>Status</th><th>Detail</th></tr></thead>
+      <tbody><tr><td>BOND</td><td><span class="badge human">HUMAN_DECISION</span></td><td>confirm the physical binding: PC port SIM0 ↔ the SEED device console/email link (the identity-binding moment, D0-07 §1.4)</td></tr><tr><td>BOOT_PROBE</td><td><span class="badge ok">OK</span></td><td>family=cisco/ios-xe day0=UNKNOWN</td></tr><tr><td>DISCOVERY_A</td><td><span class="badge ok">OK</span></td><td>devices=4 commands=14/14 statuses={&#x27;COMPLETE&#x27;: 2, &#x27;UNREACHABLE&#x27;: 2}</td></tr><tr><td>TOPOLOGY_MAP</td><td><span class="badge ok">OK</span></td><td>nodes=4 links=3 gaps=6</td></tr><tr><td>INTENT_ELICITATION</td><td><span class="badge ok">OK</span></td><td>blueprint=guest_office (keyword=menu:2) → COMPILED: 4 zones, 17 matrix rules</td></tr><tr><td>DESIGN</td><td><span class="badge ok">OK</span></td><td>4 zones · 2 uplinks · 9 access ports</td></tr><tr><td>RENDER</td><td><span class="badge ok">OK</span></td><td>rendered previews for 2 device(s)</td></tr><tr><td>EXECUTION_GATE</td><td><span class="badge ok">OK</span></td><td>staged 2/2 managed device(s); apply with --execute</td></tr></tbody>
+    </table>
+  </div>
+  <h2>Topology</h2>
+  <div class="card topology-svg"><svg viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg" style="background:#1a202c;border-radius:8px;max-width:100%;height:auto"><g><circle cx="400.0" cy="70.0" r="28" fill="#2d3748" stroke="#4a90e2" stroke-width="2"/><text x="400.0" y="74.0" text-anchor="middle" fill="white" font-size="11" font-family="monospace">seed-01</text></g><g><circle cx="400.0" cy="124.0" r="28" fill="#2d3748" stroke="#4a90e2" stroke-width="2"/><text x="400.0" y="128.0" text-anchor="middle" fill="white" font-size="11" font-family="monospace">access-sw1</text></g><g><circle cx="555.9" cy="313.0" r="28" fill="#2d3748" stroke="#4a90e2" stroke-width="2"/><text x="555.9" y="317.0" text-anchor="middle" fill="white" font-size="11" font-family="monospace">core-sw2</text></g><g><circle cx="244.1" cy="313.0" r="28" fill="#2d3748" stroke="#4a90e2" stroke-width="2"/><text x="244.1" y="317.0" text-anchor="middle" fill="white" font-size="11" font-family="monospace">l3-10.99.0.9</text></g></svg></div>
+  <h3>ASCII map</h3><pre>NETWORK MAP — evidence-graded (FSM-4) · 4 devices · 3 links
+===============================================================================
+[seed-01] (SEED) — cisco/ios-xe · C8300-1N-4T · 17.09.04a · SN DOG2734L0XX
+  Gi1/0/2            ····[LLDP · ONE-SIDED]···· Gi1/0/24           [access-sw1]  (UNREACHABLE — evidence from this side only)
+  Gi1/0/1            ════[LLDP · PROBABLE]════ Gi0/1              [core-sw2]
+  Gi1/0/9            ┄┄┄┄[ARP+MAC_ADDRESS_TABLE · INFERRED]┄┄┄┄ ?                  [l3-10.99.0.9]  (UNREACHABLE — evidence from this side only)
+[access-sw1] (NEIGHBOR_REACHED, UNREACHABLE) — vendor UNKNOWN · model UNKNOWN · version UNKNOWN
+  Gi1/0/24           ····[LLDP · ONE-SIDED]···· Gi1/0/2            [seed-01]
+[core-sw2] (NEIGHBOR_REACHED) — cisco/ios-xe · C9300-48P · 17.09.04a · SN FOC1234X9YZ
+  Gi0/1              ════[LLDP · PROBABLE]════ Gi1/0/1            [seed-01]
+[l3-10.99.0.9] (NEIGHBOR_L3_EVIDENCE, UNREACHABLE) — vendor UNKNOWN · model UNKNOWN · version UNKNOWN
+  ?                  ┄┄┄┄[ARP+MAC_ADDRESS_TABLE · INFERRED]┄┄┄┄ Gi1/0/9            [seed-01]
+
+EVIDENCE LEGEND: ════ confirmed/probable (passive ceiling) · ···· one-sided · ┄┄┄┄ inferred/intermediary · ┄╳┄╳ conflicting · ░░░░ stale · ???? unknown
+
+GAPS LIST (6) — every gap blocks assumptions, never hidden:
+  !! DEVICE_UNREACHABLE access-sw1: AUTH_REFUSED: default credentials rejected on access-sw1 (ACCESS_LIMITED — evidence-directed retry required)
+  !! DEVICE_UNREACHABLE l3-10.99.0.9: NO_ROUTE_KNOWN: l3-10.99.0.9 has no mgmt-path facts
+  !! IDENTITY_INCOMPLETE access-sw1: vendor_family, model, version, serial
+  !! IDENTITY_INCOMPLETE l3-10.99.0.9: vendor_family, model, version, serial
+  !! LINK_EVIDENCE_BELOW_CONF LINK:access-sw1|Gi1/0/24||seed-01|Gi1/0/2: FSM-4=ONE_SIDED
+  !! LINK_EVIDENCE_BELOW_CONF LINK:l3-10.99.0.9|?||seed-01|Gi1/0/9: FSM-4=INFERRED</pre>
+  <h2>Discovery gaps</h2>
+  <div class="card"><ul class='gaps'><li>{&#x27;detail&#x27;: &#x27;DEVICE_UNREACHABLE access-sw1: AUTH_REFUSED: default credentials rejected on access-sw1 (ACCESS_LIMITED — evidence-directed retry required)&#x27;}</li><li>{&#x27;detail&#x27;: &#x27;DEVICE_UNREACHABLE l3-10.99.0.9: NO_ROUTE_KNOWN: l3-10.99.0.9 has no mgmt-path facts&#x27;}</li><li>{&#x27;detail&#x27;: &#x27;IDENTITY_INCOMPLETE access-sw1: vendor_family, model, version, serial&#x27;}</li><li>{&#x27;detail&#x27;: &#x27;IDENTITY_INCOMPLETE l3-10.99.0.9: vendor_family, model, version, serial&#x27;}</li><li>{&#x27;detail&#x27;: &#x27;LINK_EVIDENCE_BELOW_CONF LINK:access-sw1|Gi1/0/24||seed-01|Gi1/0/2: FSM-4=ONE_SIDED&#x27;}</li><li>{&#x27;detail&#x27;: &#x27;LINK_EVIDENCE_BELOW_CONF LINK:l3-10.99.0.9|?||seed-01|Gi1/0/9: FSM-4=INFERRED&#x27;}</li></ul></div>
+  <div class='card'><h3>Intent</h3><pre>{&#x27;blueprint&#x27;: None, &#x27;zones&#x27;: [&#x27;users&#x27;, &#x27;guest&#x27;, &#x27;mgmt&#x27;, &#x27;wan&#x27;], &#x27;rules&#x27;: 17}</pre></div>
+  <div class='card'><h3>Design</h3><pre>{&#x27;design_id&#x27;: &#x27;design:seed-01:4zones&#x27;, &#x27;roles&#x27;: [(&#x27;core-sw2&#x27;, &#x27;L2_ACCESS&#x27;), (&#x27;seed-01&#x27;, &#x27;ROUTER&#x27;), (&#x27;access-sw1&#x27;, &#x27;UNMANAGED_NEIGHBOR&#x27;), (&#x27;l3-10.99.0.9&#x27;, &#x27;UNMANAGED_NEIGHBOR&#x27;)], &#x27;zones_count&#x27;: 4, &#x27;uplinks_count&#x27;: 2, &#x27;access_count&#x27;: 9}</pre></div>
+  <h2>Rendered configurations</h2>
+  <div class="card"><details><summary>core-sw2</summary><pre>! RENDER-VERIFIED — device=core-sw2 vendor_os=ios-xe
+enable
+configure terminal
+interface gi0/1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,40
+end
+! persist (runs only after post-apply verification passes)
+write memory</pre></details><details><summary>seed-01</summary><pre>! RENDER-VERIFIED — device=seed-01 vendor_os=ios-xe
+enable
+configure terminal
+vlan 10
+ name users
+ip routing
+interface Vlan10
+ ip address 10.240.0.1 255.255.255.192
+ip dhcp excluded-address 10.240.0.1 10.240.0.10
+ip dhcp pool users
+ network 10.240.0.0 255.255.255.192
+ default-router 10.240.0.1
+ dns-server 1.1.1.1 9.9.9.9
+vlan 20
+ name guest
+interface Vlan20
+ ip address 10.240.0.65 255.255.255.192
+ip dhcp excluded-address 10.240.0.65 10.240.0.74
+ip dhcp pool guest
+ network 10.240.0.64 255.255.255.192
+ default-router 10.240.0.65
+ dns-server 1.1.1.1 9.9.9.9
+vlan 30
+ name mgmt
+interface Vlan30
+ ip address 10.240.0.129 255.255.255.240
+vlan 40
+ name wan
+interface Vlan40
+ ip address dhcp
+ip access-list extended ACL_GUEST_IN
+ deny ip 10.240.0.64 0.0.0.63 10.240.0.64 0.0.0.63
+ip access-list extended ACL_GUEST_IN
+ deny ip 10.240.0.64 0.0.0.63 10.240.0.128 0.0.0.15
+ip access-list extended ACL_GUEST_IN
+ permit ip any any
+interface Vlan20
+ ip access-group ACL_GUEST_IN in
+ip access-list extended ACL_MGMT_IN
+ deny ip 10.240.0.128 0.0.0.15 10.240.0.64 0.0.0.63
+ip access-list extended ACL_MGMT_IN
+ deny ip 10.240.0.128 0.0.0.15 10.240.0.0 0.0.0.63
+ip access-list extended ACL_MGMT_IN
+ deny ip 10.240.0.128 0.0.0.15 0.0.0.0 255.255.255.255
+ip access-list extended ACL_MGMT_IN
+ permit ip any any
+interface Vlan30
+ ip access-group ACL_MGMT_IN in
+ip access-list extended ACL_USERS_IN
+ deny ip 10.240.0.0 0.0.0.63 10.240.0.64 0.0.0.63
+ip access-list extended ACL_USERS_IN
+ deny ip 10.240.0.0 0.0.0.63 10.240.0.128 0.0.0.15
+ip access-list extended ACL_USERS_IN
+ permit ip any any
+interface Vlan10
+ ip access-group ACL_USERS_IN in
+ip access-list extended ACL_WAN_IN
+ deny ip 0.0.0.0 255.255.255.255 10.240.0.64 0.0.0.63
+ip access-list extended ACL_WAN_IN
+ deny ip 0.0.0.0 255.255.255.255 10.240.0.128 0.0.0.15
+ip access-list extended ACL_WAN_IN
+ deny ip 0.0.0.0 255.255.255.255 10.240.0.0 0.0.0.63
+ip access-list extended ACL_WAN_IN
+ permit ip any any
+interface Vlan40
+ ip access-group ACL_WAN_IN in
+interface gi1/0/1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,40
+interface gi1/0/4
+ switchport mode access
+ switchport access vlan 10
+interface gi1/0/5
+ switchport mode access
+ switchport access vlan 10
+interface gi1/0/6
+ switchport mode access
+ switchport access vlan 20
+interface gi1/0/7
+ switchport mode access
+ switchport access vlan 20
+interface gi1/0/8
+ switchport mode access
+ switchport access vlan 30
+interface gi1/0/12
+ switchport mode access
+ switchport access vlan 40
+interface gi1/0/3
+ switchport mode access
+ switchport access vlan 10
+interface gi1/0/10
+ switchport mode access
+ switchport access vlan 20
+interface gi1/0/11
+ switchport mode access
+ switchport access vlan 10
+end
+! persist (runs only after post-apply verification passes)
+write memory</pre></details></div>
+  <div class='card'><h3>Execution</h3><pre>{&#x27;requested&#x27;: False, &#x27;outcome&#x27;: &#x27;STAGED&#x27;, &#x27;reason&#x27;: &#x27;execute=False; changes are staged, not applied&#x27;, &#x27;staged_devices&#x27;: [&#x27;core-sw2&#x27;, &#x27;seed-01&#x27;], &#x27;managed_devices&#x27;: [&#x27;core-sw2&#x27;, &#x27;seed-01&#x27;], &#x27;unconfigured_devices&#x27;: [], &#x27;unconfigured_reasons&#x27;: {}, &#x27;partially_rendered&#x27;: {}, &#x27;human_required_to_unlock&#x27;: &#x27;re-run with --execute and a confirmation at the BOND gate&#x27;}</pre></div>
+  <h2>Counters (T1–T6)</h2>
+  <div class="card">
+    <table><thead><tr><th>Counter</th><th>Value</th></tr></thead><tbody><tr><td colspan='2' style='color:var(--dim)'>no counters</td></tr></tbody></table>
+  </div>
+  <div class="footer">
+    Generated by NetOps Autopilot · evidence-driven, never a guess · 
+    <a href="https://github.com/Erfan7767/Engineering-" style="color:var(--accent)">source</a>
+  </div>
+</div>
+</body>
+</html>

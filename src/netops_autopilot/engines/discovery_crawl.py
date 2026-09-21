@@ -127,6 +127,14 @@ class DeviceResult:
     claim_admitted: int = 0
     claim_rejected: int = 0
     rejection_reasons: list[str] = field(default_factory=list)
+    #: Parsers this device's family HAS that the crawl could not issue, each
+    #: with its typed reason (see :meth:`DiscoveryCrawl.plan_gaps_for`). A
+    #: command the platform knows how to parse but is not allowed to send is a
+    #: hole in the evidence, and L01 says a gap is announced, never absorbed:
+    #: before this field existed the gap was invisible, which is how a
+    #: one-character spelling mismatch silently cost RouterOS its entire
+    #: neighbour table.
+    plan_gaps: list[str] = field(default_factory=list)
 
     def counts(self) -> tuple[int, int]:
         """(collected, planned) — the T4 n/N of this device."""
@@ -399,6 +407,41 @@ class DiscoveryCrawlEngine:
             if allowlist.is_readable(cmd):
                 plan.append((cmd, parser))
         return tuple(sorted(plan, key=lambda item: item[0]))
+
+    def plan_gaps_for(self, vendor_family: str,
+                      allowlist: CommandAllowlist) -> tuple[str, ...]:
+        """The family's parsers that cannot be issued, each with its reason.
+
+        The exact complement of :meth:`plan_for`. ``plan_for`` answers "what
+        will I send"; this answers "what do I know how to read but cannot
+        ask for, and why" — the question an operator has to be able to ask,
+        because the evidence a crawl did not gather is indistinguishable from
+        evidence that does not exist unless the report says which it is.
+
+        Reasons are typed, never prose:
+
+        ``NOT_ALLOWLISTED``
+            no template in the allowlist matches the parser's ``command_ref``.
+            Either the vocabulary disagrees (a real defect — see the RouterOS
+            ``/ip neighbor/print`` vs ``/ip/neighbor/print`` mismatch) or the
+            command was never lab-verified into the allowlist.
+        ``WRONG_CLASS:<class>``
+            a template exists but is not READ_ONLY, so the Collector may not
+            issue it during discovery.
+
+        Deterministic: sorted, one entry per parser.
+        """
+        planned = {parser.info.command_ref
+                   for _cmd, parser in self.plan_for(vendor_family, allowlist)}
+        gaps: list[str] = []
+        for parser in self._iter_family_parsers(vendor_family):
+            cmd = parser.info.command_ref
+            if cmd in planned:
+                continue
+            cls = allowlist.classify(cmd)
+            reason = "NOT_ALLOWLISTED" if cls is None else f"WRONG_CLASS:{cls}"
+            gaps.append(f"PARSER_UNISSUABLE:{parser.info.parser_id}:{cmd}:{reason}")
+        return tuple(sorted(gaps))
 
     def _iter_family_parsers(self, vendor_family: str) -> list[Parser]:
         from ..parsers.catalog import canonical_families
@@ -805,6 +848,7 @@ class DiscoveryCrawlEngine:
         try:
             allowlist = allowlist_of(family)
             plan = self.plan_for(family, allowlist)
+            result.plan_gaps.extend(self.plan_gaps_for(family, allowlist))
             result.mgmt_addresses = tuple(hints)
             if not plan:
                 result.status = DeviceStatus.NO_PLAN
@@ -1102,16 +1146,21 @@ class DiscoveryCrawlEngine:
     def _totals(visited: dict[str, DeviceResult]) -> dict:
         collected = planned = 0
         by_status: dict[str, int] = {}
+        gaps: set[str] = set()
         for result in visited.values():
             c, p = result.counts()
             collected += c
             planned += p
             by_status[result.status.value] = by_status.get(result.status.value, 0) + 1
+            gaps.update(result.plan_gaps)
         return {
             "devices": len(visited),
             "commands_collected": collected,
             "commands_planned": planned,
             "device_status": dict(sorted(by_status.items())),
+            #: Deduplicated across devices: a plan gap is a property of the
+            #: family's data, so reporting it once per device would bury it.
+            "plan_gaps": sorted(gaps),
         }
 
 

@@ -6,7 +6,16 @@ jsonschema>=4.20
 
 # Console transports (ADR-0008: bundled in the MSI)
 pyserial>=3.5            # physical console (direct-connect, the v1 path)
-# netmiko>=4.3           # SSH (optional, modeled; see ADR-0004)
+netmiko>=4.3             # SSH console/mgmt sessions (access/ssh_transport.py)
+# SSH banner evidence. ``SSHConsoleTransport.banner()`` reads the connect
+# banner through the Paramiko transport that Netmiko holds underneath
+# (``remote_conn.get_transport().get_banner()``), and the management session
+# cross-checks that banner against the dialect it chose before it will run a
+# single command. Netmiko pulls Paramiko in transitively, so it has always
+# been *installed* — but it was never *declared*, which meant the dependency
+# the banner evidence rests on could change or vanish under a resolver that
+# reads only this file. Declared here and in the ``hardware`` extra.
+paramiko>=3.4
 # telnetlib is stdlib on Py ≤3.12, removed in 3.13+ (PEP 594)
 
 # Web UI / API

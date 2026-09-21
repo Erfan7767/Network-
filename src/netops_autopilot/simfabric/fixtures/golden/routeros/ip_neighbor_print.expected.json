@@ -1,7 +1,7 @@
 {
   "parser_id": "regex/routeros_ip_neighbor_print",
   "parser_version": "1.0.0",
-  "command": "/ip neighbor/print",
+  "command": "/ip/neighbor/print",
   "spec_trace": "D5-capstone neighbor evidence (MNDP); allowlists/routeros.json READ_ONLY",
   "synthetic_representative": true,
   "expected": [

@@ -16,13 +16,23 @@ from __future__ import annotations
 import socket
 import threading
 
-import paramiko
 import pytest
 
 from netops_autopilot.access.ssh_transport import SSHConsoleTransport, SSHProfile
 
+try:  # pragma: no cover - exercised only on a bare install without the driver
+    import paramiko
+except ImportError:  # pragma: no cover
+    paramiko = None
+
+# These tests stand up a REAL SSH server on a REAL socket, so they need the
+# Paramiko server API. A bare `pip install netops-autopilot` (no ``hardware``
+# extra) has neither, and an undeclared driver must degrade to a visible skip
+# — the same rule every other driver-dependent module in this suite follows —
+# rather than break collection for the entire test run.
 pytestmark = pytest.mark.skipif(
-    not hasattr(paramiko, "ServerInterface"), reason="paramiko has no server support")
+    paramiko is None or not hasattr(paramiko, "ServerInterface"),
+    reason="paramiko (with server support) is not installed — install .[hardware]")
 
 _CISCO_BANNER = (
     b"Cisco IOS Software [Cupertino], Catalyst L3 Switch Software "

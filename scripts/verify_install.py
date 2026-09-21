@@ -36,7 +36,7 @@ def main() -> int:
     print("=" * 60)
 
     # 1. Top-level --help
-    print("\n[1/6] CLI --help")
+    print("\n[1/8] CLI --help")
     r = _run([py, "-m", "netops_autopilot", "--help"])
     if r.returncode != 0:
         print("FAIL:", r.stderr)
@@ -44,7 +44,7 @@ def main() -> int:
     print("ok")
 
     # 2. health subcommand
-    print("\n[2/6] health subcommand")
+    print("\n[2/8] health subcommand")
     r = _run([py, "-m", "netops_autopilot", "health"])
     if r.returncode != 0:
         print("FAIL:", r.stderr)
@@ -52,7 +52,7 @@ def main() -> int:
     print("ok:", r.stdout.strip()[:120])
 
     # 3. config subcommand (smoke)
-    print("\n[3/6] config subcommand (smoke)")
+    print("\n[3/8] config subcommand (smoke)")
     r = _run([py, "-m", "netops_autopilot", "config", "--help"])
     if r.returncode != 0:
         print("FAIL:", r.stderr)
@@ -60,7 +60,7 @@ def main() -> int:
     print("ok")
 
     # 4. full test suite smoke
-    print("\n[4/6] test suite (smoke: import-only)")
+    print("\n[4/8] test suite (smoke: import-only)")
     r = _run([py, "-c", (
         "import sys; sys.path.insert(0, 'src');"
         "from netops_autopilot.autopilot import AutopilotEngine;"
@@ -77,7 +77,7 @@ def main() -> int:
     print(r.stdout.strip())
 
     # 5. version + key import
-    print("\n[5/6] package version")
+    print("\n[5/8] package version")
     r = _run([py, "-c", (
         "import sys; sys.path.insert(0, 'src');"
         "import netops_autopilot;"
@@ -89,7 +89,7 @@ def main() -> int:
     print("version:", r.stdout.strip())
 
     # 6. HTML report renders a non-empty string
-    print("\n[6/7] HTML report renders")
+    print("\n[6/8] HTML report renders")
     r = _run([py, "-c", (
         "import sys; sys.path.insert(0, 'src');"
         "from netops_autopilot.reporting.html_report import render_html_report, report_from_autopilot;"
@@ -106,30 +106,58 @@ def main() -> int:
     print(r.stdout.strip())
 
     # 7. End-to-end engine run on the simulated fabric
-    print("\n[7/7] end-to-end engine run")
+    print("\n[7/8] end-to-end engine run")
     r = _run([py, "-c", (
-        "import sys; sys.path.insert(0, 'src');"
-        "from netops_autopilot.autopilot.orchestrator import AutopilotEngine;"
-        "from netops_autopilot.cli import ScriptedIO;"
-        "from netops_autopilot.ledger.store import LedgerStore;"
-        "from netops_autopilot.core.timeauth import TimeAuthority;"
-        "import datetime;"
-        "tz = datetime.timezone.utc;"
-        "ta = TimeAuthority(clock=lambda: datetime.datetime.now(tz));"
-        "store = LedgerStore(':memory:');"
-        "kid = store.keys.create_key('verify');"
-        "engine = AutopilotEngine(store=store, key_id=kid, io=ScriptedIO(["
-        "    'y', '2', 'seed-01', 'ISP fiber DHCP', 'STANDARD', '+25% in 12 months'"
-        "]), time_authority=ta);"
-        "from tests.support.simfabric import SimFabricFactory;"
-        "fabric = SimFabricFactory(include_access=True, access_behavior='allow');"
-        "report = engine.run("
-        "  probe_port_session_factory=lambda p: fabric.probe(p),"
-        "  mgmt_session_factory=fabric.open,"
-        "  port='SIM0', execute=False);"
-        "assert report.final == 'COMPLETE-STAGED', f'final={report.final}';"
-        "assert store.verify_chain().ok, 'ledger chain broken';"
-        "print('run ok, devices:', report.crawl.totals.get('devices', 0) if report.crawl else 0)"
+        "import sys; sys.path.insert(0, 'src'); sys.path.insert(0, '.');\n"
+        "from netops_autopilot.autopilot.orchestrator import AutopilotEngine;\n"
+        "from netops_autopilot.autopilot.answer_script import answer_script;\n"
+        "from netops_autopilot.cli import ScriptedIO;\n"
+        "from netops_autopilot.ledger.store import LedgerStore;\n"
+        "from netops_autopilot.core.timeauth import TimeAuthority;\n"
+        "import datetime;\n"
+        "tz = datetime.timezone.utc;\n"
+        "ta = TimeAuthority(clock=lambda: datetime.datetime.now(tz));\n"
+        "store = LedgerStore(':memory:');\n"
+        "kid = store.keys.create_key('verify');\n"
+        # The answers come from answer_script(), the single source of truth for
+        # the orchestrator's question order. They used to be a hand-written
+        # literal list here; when the orchestrator grew the access-retry,
+        # DNS and typed-BOND questions the list silently slid one slot out of
+        # alignment, 'seed-01' landed on the intent question, and this check
+        # failed with final=BLOCKED-BLOCKED while the engine was behaving
+        # exactly as designed.
+        "answers = answer_script(access_retry='n', intent='2');\n"
+        "engine = AutopilotEngine(store=store, key_id=kid, io=ScriptedIO(list(answers)),"
+        " time_authority=ta);\n"
+        "from tests.support.simfabric import SimFabricFactory;\n"
+        "fabric = SimFabricFactory(include_access=True, access_behavior='allow');\n"
+        "report = engine.run(\n"
+        "  probe_port_session_factory=lambda p: fabric.probe(p),\n"
+        "  mgmt_session_factory=fabric.open,\n"
+        "  port='SIM0', execute=False);\n"
+        "assert report.final == 'COMPLETE-STAGED', f'final={report.final}';\n"
+        "assert store.verify_chain().ok, 'ledger chain broken';\n"
+        "print('run ok, devices:', report.crawl.totals.get('devices', 0) if report.crawl else 0)\n"
+    )], timeout=60)
+    if r.returncode != 0:
+        print("FAIL:", r.stderr)
+        return 1
+    print(r.stdout.strip())
+
+    # 8. Every supported vendor family resolves a shipped adapter.
+    print("\n[8/8] adapter registry covers every vendor family")
+    r = _run([py, "-c", (
+        "import sys; sys.path.insert(0, 'src');\n"
+        "from netops_autopilot.adapters.bootstrap import default_registry, registered_families;\n"
+        "reg = default_registry();\n"
+        "fams = registered_families();\n"
+        "assert len(fams) == 6, f'expected six vendor families, got {fams}';\n"
+        "for vendor, os_name in fams:\n"
+        "    a = reg.resolve(vendor=vendor, os=os_name);\n"
+        "    assert a is not None, f'no adapter for {vendor}/{os_name}';\n"
+        "assert reg.resolve(vendor='nobody', os='never') is None, "
+        "'an unknown vendor must resolve to nothing, never to a guess';\n"
+        "print('adapters shipped for:', ', '.join(f'{v}/{o}' for v, o in fams))\n"
     )], timeout=30)
     if r.returncode != 0:
         print("FAIL:", r.stderr)
@@ -137,7 +165,7 @@ def main() -> int:
     print(r.stdout.strip())
 
     print("\n" + "=" * 60)
-    print("ALL 7 CHECKS PASSED")
+    print("ALL 8 CHECKS PASSED")
     print("=" * 60)
     return 0
 

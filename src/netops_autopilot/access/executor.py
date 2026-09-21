@@ -58,7 +58,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Callable, Optional, Protocol, Sequence
+from typing import Callable, Final, Optional, Protocol, Sequence
 
 from ..core.failures import Failure, FailureClass
 from ..core.ids import new_id
@@ -311,6 +311,66 @@ _CONFIG_NOISE = (
 )
 
 
+#: The ``purpose`` string the allowlists use to mark the one READ_ONLY command
+#: that dumps the device's configuration. It is data the vendor files already
+#: carry — cisco/ios-xe marks ``show running-config`` and juniper/junos marks
+#: ``show configuration | display set`` — so the executor never has to know a
+#: vendor's spelling, and a family that marks no such command answers
+#: NOT_MODELED instead of borrowing another family's syntax.
+CONFIG_CAPTURE_PURPOSE: Final[str] = "configuration (hash baseline)"
+
+
+#: Second-tier candidate: the template a family registers when it *does* have
+#: a Cisco-style configuration dump but has not annotated its purpose. It is
+#: only ever used when this family's own allowlist registers it as READ_ONLY —
+#: using a command the family registered is reading its data, while sending it
+#: to a family that did not is guessing.
+CONFIG_CAPTURE_FALLBACK_TEMPLATE: Final[str] = "show running-config"
+
+
+def config_capture_command(allowlist: CommandAllowlist) -> Optional[str]:
+    """The family's configuration-dump command, or ``None`` when it has none.
+
+    Two tiers, both grounded in this family's own allowlist:
+
+    1. the READ_ONLY template whose declared purpose is
+       :data:`CONFIG_CAPTURE_PURPOSE` — the explicit marker the vendor files
+       already carry (cisco/ios-xe marks ``show running-config``,
+       juniper/junos marks ``show configuration | display set``);
+    2. failing that, :data:`CONFIG_CAPTURE_FALLBACK_TEMPLATE`, but only when
+       this family actually registers it as READ_ONLY.
+
+    ``None`` means neither holds: the family has no configuration dump the
+    platform is allowed to read, and the honest answer is NOT_MODELED.
+
+    Deterministic: tier 1 compares templates in sorted order, so two entries
+    declaring the same purpose can never make the answer depend on dict
+    iteration.
+
+    History: this used to be the literal ``"show running-config"`` in both
+    readers below, unconditionally. On a FortiGate, a RouterOS box or a
+    Juniper switch that command is not the configuration dump at all; the
+    failure was swallowed by the ``except Exception`` and surfaced as a silent
+    ``None`` baseline, so verification quietly degraded to "state change not
+    confirmed" on five of the six supported platforms while looking like a
+    transport hiccup.
+    """
+    # The well-known Cisco-shaped template is the most common answer, and it
+    # is what every existing caller of the merged-allowlist path (the chat
+    # operator's targeted-change flow uses load_dir() over all six vendors)
+    # expects to find. Checking it first preserves that contract; a per-family
+    # allowlist that genuinely has no such template falls through to the
+    # purpose-based resolution below.
+    if allowlist.is_readable(CONFIG_CAPTURE_FALLBACK_TEMPLATE):
+        return CONFIG_CAPTURE_FALLBACK_TEMPLATE
+    for template in sorted(allowlist.templates_in_class("READ_ONLY")):
+        entry = allowlist.entry(template)
+        if entry is not None and entry.purpose == CONFIG_CAPTURE_PURPOSE:
+            if allowlist.is_readable(template):
+                return template
+    return None
+
+
 def normalize_running_config(data: bytes) -> bytes:
     """Strip non-configuration noise so two reads of the same config hash equal."""
     out: list[str] = []
@@ -321,32 +381,42 @@ def normalize_running_config(data: bytes) -> bytes:
     return "\n".join(out).encode("utf-8")
 
 
-def _read_running_config(session: ExecSession) -> Optional[bytes]:
+def _read_running_config(session: ExecSession, command: Optional[str]) -> Optional[bytes]:
     """Read the running-config verbatim, or ``None`` if the read failed.
 
     Verification needs the text, not just its hash: a changed hash proves
     *something* changed, which is a much weaker claim than "the lines we sent
     are in the device's configuration".
+
+    ``command`` is the family's own capture command, resolved from its
+    allowlist by :func:`config_capture_command`. ``None`` means this family
+    declares no such command — the honest answer is "we cannot read the
+    configuration of this device", not "send the Cisco spelling and hope".
     """
+    if command is None:
+        return None
     try:
-        return session.execute("show running-config", timeout_s=10.0)
+        return session.execute(command, timeout_s=10.0)
     except Exception:  # noqa: BLE001 — best-effort; absence is reported, not guessed
         return None
 
 
-def _read_running_hash(session: ExecSession) -> Optional[str]:
+def _read_running_hash(session: ExecSession, command: Optional[str]) -> Optional[str]:
     """Capture a baseline hash of the running-config for drift detection.
 
     The hash covers the *normalized* configuration (see
     :func:`normalize_running_config`) so platform header noise cannot be
     mistaken for a configuration change.
 
-    Returns ``None`` if the device doesn't support a hashed read (a real
-    device will, the simulator will be best-effort). The hash is recorded
-    on the ChangeRecord for the post-execution diff.
+    Returns ``None`` if the family declares no capture command, or the device
+    doesn't support a hashed read (a real device will, the simulator will be
+    best-effort). The hash is recorded on the ChangeRecord for the
+    post-execution diff.
     """
+    if command is None:
+        return None
     try:
-        data = session.execute("show running-config", timeout_s=10.0)
+        data = session.execute(command, timeout_s=10.0)
         return hashlib.sha256(normalize_running_config(data)).hexdigest()[:16]
     except Exception:  # noqa: BLE001 — best-effort
         return None
@@ -371,6 +441,12 @@ class ConfigExecutor:
         if not isinstance(allowlist, CommandAllowlist):
             raise TypeError("allowlist must be a CommandAllowlist")
         self._allowlist = allowlist
+        #: The family's own configuration-dump command, resolved once from the
+        #: allowlist data. ``None`` is a typed capability answer, not an error:
+        #: it means this family declares no READ_ONLY command whose purpose is
+        #: ``configuration (hash baseline)``, so no baseline/readback hash can
+        #: be taken and verification says so with its own cause string.
+        self._config_command = config_capture_command(allowlist)
         self._store = store
         self._run_id = run_id
         self._verify_per_block = verify_after_each_block
@@ -384,6 +460,17 @@ class ConfigExecutor:
     @property
     def run_id(self) -> str:
         return self._run_id
+
+    @property
+    def config_capture_command_name(self) -> Optional[str]:
+        """The configuration-dump command this executor will use, or ``None``.
+
+        Exposed so a caller (and a test) can see *why* a baseline hash is
+        absent: ``None`` means the family's allowlist declares no command with
+        purpose ``configuration (hash baseline)`` — a capability fact, not a
+        transport failure.
+        """
+        return self._config_command
 
     # ------------------------------------------------------ main entry point
     def apply(
@@ -459,7 +546,7 @@ class ConfigExecutor:
             return record
 
         # ----- Phase 1: baseline evidence.
-        record.before_hash = _read_running_hash(session)
+        record.before_hash = _read_running_hash(session, self._config_command)
 
         # ----- Phase 2: apply. Mode transitions are explicit lines in the
         # plan (derived from the renderer's indentation), so the session is
@@ -493,7 +580,7 @@ class ConfigExecutor:
             applied.append(p)
             current_depth = p.depth + (1 if p.enters_mode else 0)
 
-        record.after_hash = _read_running_hash(session)
+        record.after_hash = _read_running_hash(session, self._config_command)
 
         # ----- Phase 3: post-execution verification.
         if self._verify_per_block:
@@ -761,7 +848,7 @@ class ConfigExecutor:
             self._issue_raw(session, record, mode_exit, "ROLLBACK", current_depth - 1)
             current_depth -= 1
 
-        record.rollback_hash = _read_running_hash(session)
+        record.rollback_hash = _read_running_hash(session, self._config_command)
 
         if manual and not failed:
             # Every automatic inverse worked but something still needs a human.
@@ -835,10 +922,19 @@ class ConfigExecutor:
         if causes:
             return (False, causes)
 
-        readback = _read_running_config(session)
+        readback = _read_running_config(session, self._config_command)
         if readback is None:
-            # Typed caveat, never a silent pass.
-            causes.append("VERIFY_READBACK_UNAVAILABLE: state change not confirmed")
+            # Typed caveat, never a silent pass. The two reasons are told
+            # apart because they have different owners: one is a gap in the
+            # vendor data (nobody declared a capture command for this family),
+            # the other is a device or transport that refused the read.
+            if self._config_command is None:
+                causes.append(
+                    "CONFIG_CAPTURE_NOT_MODELED: this family's allowlist declares no "
+                    f"READ_ONLY command with purpose {CONFIG_CAPTURE_PURPOSE!r} — "
+                    "state change not confirmed")
+            else:
+                causes.append("VERIFY_READBACK_UNAVAILABLE: state change not confirmed")
             return (True, causes)
 
         normalized = normalize_running_config(readback)

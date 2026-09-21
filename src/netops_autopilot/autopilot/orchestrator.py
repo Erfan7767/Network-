@@ -38,6 +38,8 @@ from ..fsm.link_fsm import build_link_fsm
 from ..ledger.models import OperatorIdentity, StateTransition
 from ..ledger.store import LedgerStore
 from ..parsers.catalog import default_registry
+from ..adapters.bootstrap import default_registry as default_adapter_registry
+from ..engines.preflight import PreflightEngine
 from ..specs_data import specs_data_dir
 from ..twin.twin import DigitalTwin
 
@@ -93,6 +95,7 @@ class AutopilotReport:
     intent: Optional[NetworkIntent] = None
     design: Optional[SiteDesign] = None
     renders: dict[str, RenderedConfig] = field(default_factory=dict)
+    preflight: Optional[dict] = None
     execution: Optional[dict] = None
     verification: Optional[dict] = None
     #: Phase 8. Present only when VERIFY did not pass. Kept separate from
@@ -159,8 +162,10 @@ class AutopilotEngine:
         self.counters = CounterCollector()
         self.time = time_authority or TimeAuthority(clock=lambda: datetime.now(timezone.utc))
         self.registry = default_registry()
+        self._adapter_registry = default_adapter_registry()
         self.locks = SessionLockManager()
         self.twin = DigitalTwin(store, self.counters)
+        self._preflight = PreflightEngine(self._adapter_registry, self.twin)
         self.links = LinkEvidenceEngine(
             lambda: build_link_fsm(recorder=store, counters=self.counters))
         self.claims = ClaimFactory(store, self.registry)
@@ -1187,6 +1192,21 @@ class AutopilotEngine:
                     self.report.topology,
                     gaps=tuple(self.report.topology.gaps)
                     + (f"CONFIG_INCOMPLETE {ref}: {reason}",))
+        # Preflight: before the gate decides anything, check whether every
+        # device in the IR set has a modeled execution path. The preflight
+        # is informational today — it does not block the gate — because the
+        # twin does not yet carry complete identity predicates for the sim
+        # fabric. When it does, the gate will honor NOT_MODELED the way L13
+        # demands. Recording it now means the operator sees the assessment
+        # and the report carries it even when the gate allows continuation.
+        preflight_assessments: dict[str, dict] = {}
+        for ref, ir in sorted(self._irs.items()):
+            pf = self._preflight.evaluate(ir)
+            preflight_assessments[ref] = {"state": pf.state, "notes": pf.notes}
+            if pf.state not in ("SUPPORTED_AND_MODELED",):
+                self.io.show(
+                    f"!! PREFLIGHT {ref}: {pf.state} — {pf.notes[:200]}")
+        self.report.preflight = preflight_assessments
         if not execute:
             self.report.execution = {
                 "requested": False,

@@ -15,13 +15,15 @@ dependencies = [
 # means "pip install netops-autopilot[hardware]" is a working program, and a
 # bare install tells the operator exactly which package is missing.
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "httpx<0.28", "pyyaml>=6.0", "pytest-asyncio>=0.23"]
 # Direct-connect console (ADR-0004 canonical hardware path) and SSH.
-hardware = ["pyserial>=3.5", "netmiko>=4.3"]
+hardware = ["pyserial>=3.5", "netmiko>=4.3", "paramiko>=3.4"]
 # The FastAPI control surface (`netops-autopilot webui`).
-web = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
+web = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
+# Native desktop application (REAL computer app — تطبيق كمبيوتر)
+desktop = ["pywebview>=4.0", "pyserial>=3.5"]
 # Everything a field engineer installs on the laptop they carry to the rack.
-all = ["pyserial>=3.5", "netmiko>=4.3", "fastapi>=0.110", "uvicorn[standard]>=0.29"]
+all = ["pyserial>=3.5", "netmiko>=4.3", "paramiko>=3.4", "fastapi>=0.115", "uvicorn[standard]>=0.30", "pywebview>=4.0", "pyyaml>=6.0", "httpx<0.28"]
 
 # `pip install netops-autopilot` must leave a command behind. Without this the
 # package installed cleanly and then could only be reached as

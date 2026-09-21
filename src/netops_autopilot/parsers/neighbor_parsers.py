@@ -234,7 +234,7 @@ class JunosLldpNeighborsParser(Parser):
 
 # --------------------------------------------------------------------- routeros
 class RouterOsIpNeighborPrintParser(Parser):
-    """``/ip neighbor/print`` — MNDP table; columnar v7 rows and key=value rows.
+    """``/ip/neighbor/print`` — MNDP table; columnar v7 rows and key=value rows.
 
     Columnar rows: ``# INTERFACE ADDRESS MAC-ADDRESS IDENTITY PLATFORM ...``.
     Detail rows: ``interface=ether1 address=.. mac-address=.. identity=..``.
@@ -245,7 +245,14 @@ class RouterOsIpNeighborPrintParser(Parser):
         parser_id="regex/routeros_ip_neighbor_print",
         version="1.0.0",
         vendor_family="mikrotik/routeros",
-        command_ref="/ip neighbor/print",
+        # The allowlist is the authority on the spelling that may be issued,
+        # and RouterOS entries in it use the path form throughout
+        # (/system/resource/print, /ip/address/print, ...). This parser used
+        # the space form, so DiscoveryCrawl.plan_for() — catalog INTERSECT
+        # READ_ONLY allowlist, matched on the exact string — never planned it:
+        # RouterOS MNDP neighbour evidence was silently never collected, and
+        # nothing in the crawl report said so.
+        command_ref="/ip/neighbor/print",
     )
 
     _MAC = r"[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}"

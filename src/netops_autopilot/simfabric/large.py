@@ -127,9 +127,13 @@ def build(k: int, m: int):
 
 
 class LargeFabric:
+    """ULTRA LEGENDARY — supports small (4), large (21), xlarge (73), complex (157, 273) with quadtree+clustering."""
     def __init__(self, k, m):
+        self.k = k
+        self.m = m
         self.refs, self.sessions = build(k, m)
         self.opened = []
+        self._device_sessions = {}
     def probe(self, port):
         return self.sessions["seed-01"], SEED_BANNER
     def open(self, device_ref, mgmt_hints=()):
@@ -138,7 +142,37 @@ class LargeFabric:
         if s is None:
             raise KeyError(device_ref)
         return s
+    def device_session(self, device_ref):
+        """For chat device_runner — returns session for any device."""
+        s = self.sessions.get(device_ref)
+        if s is None:
+            raise KeyError(device_ref)
+        return s
     def __call__(self, device_ref, mgmt_hints=()):
         return self.open(device_ref, mgmt_hints)
+    @property
+    def size_category(self):
+        n = len(self.refs)
+        if n <= 10:
+            return "SMALL"
+        elif n <= 50:
+            return "MEDIUM"
+        elif n <= 200:
+            return "LARGE"
+        else:
+            return "COMPLEX"
+
+
+def build_xlarge():
+    """X-Large: 1 core + 8 dist + 64 access = 73 devices — COMPLEX, clustering enabled."""
+    return LargeFabric(k=8, m=8)
+
+def build_xxlarge():
+    """XX-Large: 1 core + 12 dist + 144 access = 157 devices — COMPLEX, quadtree+clustering."""
+    return LargeFabric(k=12, m=12)
+
+def build_xxxlarge():
+    """XXX-Large: 1 core + 16 dist + 256 access = 273 devices — COMPLEX, ultra legendary."""
+    return LargeFabric(k=16, m=16)
 
 
