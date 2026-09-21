@@ -57,7 +57,10 @@ SCENARIOS: dict[str, Scenario] = {
         name="Datacenter Leaf-Spine",
         description="2-spine, 4-leaf fabric; L3 boundary at the spine; HA enabled.",
         blueprint_hint="datacenter leaf-spine with BGP",
-        wan_handoff="Two uplinks, BGP to upstream AS",
+        # BGP to the upstream AS is not something this platform can build
+        # yet, so the demo hands off statically rather than claiming a
+        # capability it does not have.
+        wan_handoff="Two uplinks, static 198.51.100.0/30 gw 198.51.100.1",
         availability="HIGH",
         growth="+50% in 18 months",
     ),
@@ -65,7 +68,7 @@ SCENARIOS: dict[str, Scenario] = {
         name="Hotel Guest WiFi",
         description="Hotel: 1 router, staff VLAN + guest VLAN, captive portal, HIGH availability.",
         blueprint_hint="hotel with guest WiFi captive portal",
-        wan_handoff="ISP fiber, static IP /30",
+        wan_handoff="ISP fiber, static 203.0.113.0/30 gw 203.0.113.1",
         availability="HIGH",
         growth="+40% in 24 months",
     ),

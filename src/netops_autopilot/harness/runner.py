@@ -191,7 +191,7 @@ def default_scenarios() -> dict[str, ScenarioFn]:
         counters = CounterCollector()
         bp = next(b for b in BLUEPRINTS if b.blueprint_id == "guest_office")
         req, missing = business_intent_from_blueprint(
-            bp, answers={"wan_handoff": "x", "availability": "STANDARD", "growth": "flat"},
+            bp, answers={"wan_handoff": "static 203.0.113.0/30 gw 203.0.113.1", "availability": "STANDARD", "growth": "flat"},
             requirement_text="guest wifi")
         intent = IntentCompiler(ServiceGraph.load_builtin()).compile(req)
         facts = {"status": intent.status, "rules": len(intent.rules),
@@ -210,7 +210,7 @@ def default_scenarios() -> dict[str, ScenarioFn]:
         engine = AutopilotEngine(
             store=store, key_id=key_id,
             io=ScriptedIO(answer_script(access_retry="n", intent="2",
-                                      wan_handoff="x", growth="flat")),
+                                      wan_handoff="static 203.0.113.0/30 gw 203.0.113.1", growth="flat")),
             time_authority=time_auth)
         report = engine.run(
             probe_port_session_factory=lambda port: fabric.probe(port),

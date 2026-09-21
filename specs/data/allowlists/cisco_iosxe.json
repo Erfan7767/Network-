@@ -521,6 +521,17 @@
           ],
           "rollback": "no ip access-group <name> in",
           "scope": "interface"
+        },
+        {
+          "template": "ip route <net> <mask> <next_hop>",
+          "purpose": "install a static route; for the WAN this is the default route to the provider's next hop, without which nothing leaves the site",
+          "fields": [
+            "net",
+            "mask",
+            "next_hop"
+          ],
+          "rollback": "no ip route <net> <mask> <next_hop>",
+          "scope": "routing"
         }
       ]
     },

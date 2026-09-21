@@ -56,7 +56,7 @@ def _compiled_intent(bp_id: str, answers):
 
 
 def _engine_and_intent():
-    blueprint, intent = _compiled_intent("branch", {"wan_handoff": "fiber handoff on edge",
+    blueprint, intent = _compiled_intent("branch", {"wan_handoff": "fiber handoff on edge, static 203.0.113.0/30 gw 203.0.113.1",
                                                     "availability": "STANDARD", "growth": "flat"})
     capability = _Matrix(CapabilityEngine.load_builtin())
     return DesignEngine(capability), blueprint, intent
@@ -77,9 +77,19 @@ def test_harvest_interfaces_normalized_and_deduped():
 def test_design_deterministic_replay():
     engine, bp, intent = _engine_and_intent()
     design_a = engine.design(intent=intent, blueprint=bp, report=_build(),
-                             answers={"router_device": "core-sw1"}, site_block_v4="10.50.0.0/16")
+                             answers={"router_device": "core-sw1",
+                     # The blueprint has a WAN zone, so how the WAN is fed is
+                     # a fact the design needs; a static handoff without the
+                     # provider block and next hop is refused, never guessed.
+                     "wan_handoff": "static 203.0.113.0/30 gw 203.0.113.1"},
+             site_block_v4="10.50.0.0/16")
     design_b = engine.design(intent=intent, blueprint=bp, report=_build(),
-                             answers={"router_device": "core-sw1"}, site_block_v4="10.50.0.0/16")
+                             answers={"router_device": "core-sw1",
+                     # The blueprint has a WAN zone, so how the WAN is fed is
+                     # a fact the design needs; a static handoff without the
+                     # provider block and next hop is refused, never guessed.
+                     "wan_handoff": "static 203.0.113.0/30 gw 203.0.113.1"},
+             site_block_v4="10.50.0.0/16")
     assert design_a == design_b
     assert not design_a.blocked
 
@@ -87,7 +97,12 @@ def test_design_deterministic_replay():
 def test_roles_and_unreachable_policy():
     engine, bp, intent = _engine_and_intent()
     design = engine.design(intent=intent, blueprint=bp, report=_build(),
-                           answers={"router_device": "core-sw1"}, site_block_v4="10.50.0.0/16")
+                           answers={"router_device": "core-sw1",
+                     # The blueprint has a WAN zone, so how the WAN is fed is
+                     # a fact the design needs; a static handoff without the
+                     # provider block and next hop is refused, never guessed.
+                     "wan_handoff": "static 203.0.113.0/30 gw 203.0.113.1"},
+             site_block_v4="10.50.0.0/16")
     roles = {r.device_ref: r.role for r in design.roles}
     assert roles["core-sw1"] == "ROUTER"
     # access-sw1 was never reached ⇒ outside the managed set, loudly.
@@ -100,25 +115,40 @@ def test_roles_and_unreachable_policy():
 def test_zone_plan_uses_ipam_deterministically():
     engine, bp, intent = _engine_and_intent()
     design = engine.design(intent=intent, blueprint=bp, report=_build(),
-                           answers={"router_device": "core-sw1"}, site_block_v4="10.50.0.0/16")
+                           answers={"router_device": "core-sw1",
+                     # The blueprint has a WAN zone, so how the WAN is fed is
+                     # a fact the design needs; a static handoff without the
+                     # provider block and next hop is refused, never guessed.
+                     "wan_handoff": "static 203.0.113.0/30 gw 203.0.113.1"},
+             site_block_v4="10.50.0.0/16")
     by_zone = {z.zone: z for z in design.zones}
     # first-fit cursor packing, coarsest-first: users /25, voice /26,
     # wan /27, mgmt /28 — zero overlap by construction.
     assert by_zone["users"].subnet == "10.50.0.0/25"
     assert by_zone["voice"].subnet == "10.50.0.128/26"
     assert by_zone["mgmt"].subnet == "10.50.0.192/28"        # /28 before /29 in the cursor
-    assert by_zone["wan"].subnet == "10.50.0.208/29"         # handoff-sized /29
+    # The WAN is the exception, and the point of it: its block is the
+    # provider's, not this platform's. IPAM packs the zones it owns; the WAN
+    # takes the address the provider issued and the next hop they named.
+    assert by_zone["wan"].subnet == "203.0.113.0/30"
+    assert by_zone["wan"].gateway == "203.0.113.2"           # first usable that is not the provider's
+    assert "wan" in design.provider_assigned_zones
     assert by_zone["users"].gateway == "10.50.0.1"
     assert by_zone["mgmt"].gateway == "10.50.0.193"          # first usable of its block
     subnets = [z.subnet for z in design.zones]
     assert not __import__("netops_autopilot.engines.ipam", fromlist=["find_overlaps"]).find_overlaps(subnets)
-    assert all("IPAM" in z.reason for z in design.zones)
+    assert all("IPAM" in z.reason for z in design.zones if z.zone != "wan")
 
 
 def test_unreachable_devices_get_no_ir_and_managed_do():
     engine, bp, intent = _engine_and_intent()
     design = engine.design(intent=intent, blueprint=bp, report=_build(),
-                           answers={"router_device": "core-sw1"}, site_block_v4="10.50.0.0/16")
+                           answers={"router_device": "core-sw1",
+                     # The blueprint has a WAN zone, so how the WAN is fed is
+                     # a fact the design needs; a static handoff without the
+                     # provider block and next hop is refused, never guessed.
+                     "wan_handoff": "static 203.0.113.0/30 gw 203.0.113.1"},
+             site_block_v4="10.50.0.0/16")
     ir = engine.render_ir(design, vendor_os_of={"core-sw1": "ios-xe", "core-sw2": "ios-xe"})
     assert set(ir) <= {"core-sw1", "core-sw2"}
     # Router carries SVI nodes with the exact gateway addressing.

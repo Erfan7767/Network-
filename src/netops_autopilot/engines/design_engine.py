@@ -347,12 +347,39 @@ class DesignEngine:
             vlan = pick_vlan_id(existing_vlans, taken_vlans, zone.name)
             taken_vlans.add(vlan)
             gateway = gateway_address(subnet, 1)
+            basis = None
+            if zone.kind.value == "WAN" and not handoff_is_dhcp(answers.get("wan_handoff")):
+                parsed = parse_static_handoff(answers.get("wan_handoff"))
+                if parsed is None:
+                    return SiteDesign(
+                        "design-blocked", tuple(roles), tuple(zone_assigns),
+                        (), (), None, tuple(sorted(questions)), True,
+                        tuple(reasons) + (
+                            "WAN_STATIC_HANDOFF_INCOMPLETE: the handoff was declared "
+                            f"static ({answers.get('wan_handoff')!r}) but carries neither "
+                            "the provider's assigned block nor its next hop. Both are "
+                            "facts only the provider knows; answering e.g. "
+                            "'static 203.0.113.0/30 gw 203.0.113.1' supplies them. "
+                            "Refusing to invent a WAN address or a default route.",))
+                block, hop = parsed
+                addr = static_handoff_device_address(block, hop)
+                if addr is None:
+                    return SiteDesign(
+                        "design-blocked", tuple(roles), tuple(zone_assigns),
+                        (), (), None, tuple(sorted(questions)), True,
+                        tuple(reasons) + (
+                            f"WAN_STATIC_HANDOFF_UNUSABLE: {block} leaves no address for "
+                            f"this device once the provider's next hop {hop} is taken out.",))
+                subnet, gateway = block, addr
+                basis = (f"WAN on the provider's block {block}; this device takes {addr}; "
+                         f"provider next hop {hop}")
             zone_assigns.append(ZoneAssignment(
                 zone=zone.name, kind=zone.kind.value, vlan_id=vlan, subnet=subnet,
                 gateway=gateway, routed_on=router_ref,
-                reason=(f"IPAM first-fit: site={site_block_v4} hosts={hosts} ⇒ /{prefix}; "
-                        f"vlan={vlan} " + _vlan_basis(existing_vlans, vlan, zone.name)
-                        + "; gw=first usable")))
+                reason=(basis if basis else
+                        (f"IPAM first-fit: site={site_block_v4} hosts={hosts} ⇒ /{prefix}; "
+                         f"vlan={vlan} " + _vlan_basis(existing_vlans, vlan, zone.name)
+                         + "; gw=first usable"))))
             if zone.kind.value == "MGMT":
                 mgmt_subnet = subnet
 
@@ -374,7 +401,9 @@ class DesignEngine:
                 intent, zone_assigns, answers.get("wan_handoff")),
             provider_assigned_zones=tuple(sorted(
                 z.zone for z in zone_assigns
-                if z.kind == "WAN" and handoff_is_dhcp(answers.get("wan_handoff")))),
+                if z.kind == "WAN" and (
+                    handoff_is_dhcp(answers.get("wan_handoff"))
+                    or parse_static_handoff(answers.get("wan_handoff")) is not None))),
             blocked=blocked,
             blocked_reasons=tuple(reasons + ([f"HQ-PENDING: {q}" for q in questions] if questions else [])),
         )
@@ -722,6 +751,30 @@ class DesignEngine:
                 reversibility=Reversibility.REVERSIBLE_BY_REPLACE,
                 requires=(f"vlan:{zone.zone}",),
                 provides=(f"l3:{zone.zone}",)))
+            # A static provider handoff gives this site a block and a next hop,
+            # and nothing else installs the default route. Without this node the
+            # WAN interface carries a real provider address and the site still
+            # has no way out — which post-apply verification now grades as a
+            # failure instead of reading a route line nobody configured.
+            if zone.kind == "WAN" and not handoff_is_dhcp(answers.get("wan_handoff")):
+                parsed = parse_static_handoff(answers.get("wan_handoff"))
+                if parsed is not None:
+                    _block, hop = parsed
+                    nodes.append(IRNode(
+                        node_id=f"wan-static-route-{zone.zone}",
+                        target=_REF(target),
+                        operation=Operation.CREATE, feature="static_route",
+                        vendor_os=os_name,
+                        parameters={
+                            "destination": "0.0.0.0", "mask": "0.0.0.0", "prefix": "0",
+                            "next_hop": hop,
+                            "reason": (f"provider handoff {_block}: default route via the "
+                                       f"provider's next hop {hop}, the only egress this "
+                                       f"site has"),
+                        },
+                        reversibility=Reversibility.REVERSIBLE_BY_REPLACE,
+                        requires=(f"l3:{zone.zone}",),
+                        provides=("egress:default",)))
             # DHCP for the zones clients actually attach to. Without a pool the
             # VLAN and gateway exist but nothing ever gets an address, so the
             # network is dead on arrival for end users.
@@ -1078,6 +1131,47 @@ def effective_denied_pairs(intent: NetworkIntent) -> tuple[tuple[str, str], ...]
             if effective.action is RuleAction.DENY:
                 denied.append((src, dst))
     return tuple(denied)
+
+
+def parse_static_handoff(handoff: Optional[str]):
+    """The provider's block and next hop, when the operator actually gave them.
+
+    A static WAN handoff is two facts only the provider knows: the block they
+    assigned and the next hop inside it. Neither can be derived, and inventing
+    either puts an address on the WAN interface that the provider never issued
+    and installs a default route that forwards nothing. So this returns ``None``
+    unless both are present in the answer, and the caller refuses rather than
+    guessing.
+    """
+    text = handoff or ""
+    nets = re.findall(r"\b(\d{1,3}(?:\.\d{1,3}){3}/\d{1,2})\b", text)
+    hops = re.findall(
+        r"\b(?:gw|gateway|next[- ]?hop|via)\s*[:=]?\s*(\d{1,3}(?:\.\d{1,3}){3})\b",
+        text, re.IGNORECASE)
+    if not nets or not hops:
+        return None
+    try:
+        block = ipaddress.ip_network(nets[0], strict=False)
+        hop = ipaddress.ip_address(hops[0])
+    except ValueError:
+        return None
+    if hop not in block:
+        return None
+    return str(block), str(hop)
+
+
+def static_handoff_device_address(block: str, next_hop: str) -> Optional[str]:
+    """The address this device takes on a provider-assigned static block.
+
+    The first usable host that is not the provider's next hop. The provider's
+    own address cannot be reused, and nothing else in the block is ours to
+    invent.
+    """
+    net = ipaddress.ip_network(block, strict=False)
+    for host in net.hosts():
+        if str(host) != next_hop:
+            return str(host)
+    return None
 
 
 def handoff_is_dhcp(handoff: Optional[str]) -> bool:

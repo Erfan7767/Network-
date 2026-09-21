@@ -368,11 +368,27 @@ class LoopbackSession:
         really applied.
         """
         base = self.outputs.get("show ip route", b"").decode("utf-8", "replace")
-        lines = [base.rstrip("\n")]
+        # An `ip address` on an SVI REPLACES whatever was there. Leaving the
+        # fixture's original connected route for a Vlan this session re-
+        # addressed put two connected networks on one interface, and the first
+        # one found — the stale one — was what verification graded against.
+        readdressed = {str(vlan) for vlan, _ip, _m in self.configured_svis()}
+        kept = [ln for ln in base.rstrip("\n").splitlines()
+                if not any(ln.rstrip().endswith(f", Vlan{v}")
+                           for v in readdressed)]
+        lines = ["\n".join(kept)]
         for vlan, ip, mask in self.configured_svis():
             net = ipaddress.ip_network(f"{ip}/{mask}", strict=False)
             lines.append(f"C        {net} is directly connected, Vlan{vlan}")
             lines.append(f"L        {ip}/32 is directly connected, Vlan{vlan}")
+        for net, mask, nh in self.applied_static_routes():
+            prefix = ipaddress.ip_network(f"{net}/{mask}", strict=False).prefixlen
+            # IOS marks a static route that can serve as the default with `*`.
+            code = "S*" if prefix == 0 else "S "
+            lines.append(f"{code}    {net}/{prefix} "
+                         f"[{self.STATIC_ADMIN_DIST}/0] via {nh}")
+            if prefix == 0:
+                lines.insert(0, f"Gateway of last resort is {nh} to network 0.0.0.0")
         if self.dhcp_interfaces:
             gw_head = self.DHCP_LEASE_GATEWAY.rsplit(".", 1)[0]
             lines += [
@@ -382,6 +398,26 @@ class LoopbackSession:
                 f"S*    0.0.0.0/0 [254/0] via {self.DHCP_LEASE_GATEWAY}",
             ]
         return "\n".join(lines) + "\n"
+
+    #: Administrative distance IOS shows for a static route.
+    STATIC_ADMIN_DIST = 1
+
+    def applied_static_routes(self) -> list[tuple[str, str, str]]:
+        """The ``ip route`` statements this session actually accepted.
+
+        A real device adds each one to its table. Synthesizing them from the
+        commands the session ran — rather than carrying a default route in the
+        canned fixture — is what makes "is there egress?" a question about the
+        configuration under test instead of about the test double.
+        """
+        out: list[tuple[str, str, str]] = []
+        for cmd in self.written_config:
+            m = re.match(
+                r"^\s*ip route (\d+\.\d+\.\d+\.\d+) (\d+\.\d+\.\d+\.\d+)"
+                r" (\d+\.\d+\.\d+\.\d+)\s*$", cmd, re.IGNORECASE)
+            if m and not cmd.strip().lower().startswith("no "):
+                out.append((m.group(1), m.group(2), m.group(3)))
+        return out
 
     def _ip_route_unused(self) -> str:
         """`show ip route` with the default route a DHCP WAN handoff installs.

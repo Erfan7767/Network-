@@ -91,6 +91,14 @@
         "interface Vlan{vlan_id}",
         " ip access-group {acl_name} in"
       ]
+    },
+    "static_route": {
+      "commands": [
+        "ip route {destination} {mask} {next_hop}"
+      ],
+      "prelude": [
+        "ip routing"
+      ]
     }
   }
 }
